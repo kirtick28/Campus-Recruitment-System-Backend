@@ -1,0 +1,34 @@
+# node
+node_modules/
+
+# env files
+.env
+.env.local
+.env.development
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# coverage
+coverage/
+
+# build
+dist/
+build/
+
+# test output
+jest-report/
+
+# IDE
+.vscode/
+.idea/
+
+# misc
+*.pid
+*.seed
