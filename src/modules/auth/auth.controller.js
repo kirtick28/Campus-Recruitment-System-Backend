@@ -45,7 +45,7 @@ export const login = catchAsync(async (req, res) => {
 });
 
 // FORGOT PASSWORD
-export const forgotPassword = catchAsync(async (req, res, next) => {
+export const forgotPassword = catchAsync(async (req, res) => {
   const { email } = req.body;
 
   await forgotPasswordService(email, req);
