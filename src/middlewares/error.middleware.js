@@ -47,12 +47,7 @@ const handleJWTExpiredError = () => ({
   isOperational: true,
 });
 
-/*
-============================
-SEND ERROR IN DEVELOPMENT
-============================
-*/
-
+// SEND ERROR IN DEVELOPMENT
 const sendErrorDev = (err, res) => {
   console.error('ERROR 💥', err);
 
@@ -64,12 +59,7 @@ const sendErrorDev = (err, res) => {
   });
 };
 
-/*
-============================
-SEND ERROR IN PRODUCTION
-============================
-*/
-
+// SEND ERROR IN PRODUCTION
 const sendErrorProd = (err, res) => {
   if (err.isOperational) {
     res.status(err.statusCode).json({
@@ -86,12 +76,7 @@ const sendErrorProd = (err, res) => {
   }
 };
 
-/*
-============================
-GLOBAL ERROR HANDLER
-============================
-*/
-
+// GLOBAL ERROR HANDLER
 export const globalErrorHandler = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
