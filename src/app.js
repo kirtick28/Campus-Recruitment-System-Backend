@@ -38,6 +38,7 @@ app.use('/api/v1', router);
 app.all('/{*any}', (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server`, 404));
 });
+
 app.use(globalErrorHandler);
 
 export default app;
