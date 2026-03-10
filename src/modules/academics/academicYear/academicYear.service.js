@@ -8,10 +8,6 @@ const buildAcademicYearFilter = (query = {}) => {
     filter.name = { $regex: query.name, $options: 'i' };
   }
 
-  if (query.isActive !== undefined) {
-    filter.isActive = query.isActive === 'true';
-  }
-
   if (query.startYear) {
     filter.startYear = Number(query.startYear);
   }
@@ -45,23 +41,9 @@ const parseListOptions = (query = {}) => {
   const page = Number.parseInt(query.page, 10) || 1;
   const limit = Number.parseInt(query.limit, 10) || 20;
   const skip = (page - 1) * limit;
-  const sort = query.sort || '-startYear';
+  const sort = query.sort || '-createdAt';
 
   return { page, limit, skip, sort };
-};
-
-export const createAcademicYearService = async (payload) => {
-  if (payload.isActive === true) {
-    const activeYear = await AcademicYear.findOne({ isActive: true });
-    if (activeYear) {
-      throw new AppError(
-        'An active academic year already exists. Deactivate it first or create as inactive.',
-        400
-      );
-    }
-  }
-
-  return AcademicYear.create(payload);
 };
 
 export const getAcademicYearsService = async (query) => {
@@ -94,57 +76,36 @@ export const getAcademicYearByIdService = async (id) => {
   return academicYear;
 };
 
-export const getActiveAcademicYearService = async () => {
-  const academicYear = await AcademicYear.findOne({ isActive: true });
+export const createAcademicYearService = async (payload) => {
+  const academicYearPayload = {
+    name: payload.name,
+    startYear: Number(payload.startYear),
+    endYear: Number(payload.endYear),
+    startDate: payload.startDate,
+    endDate: payload.endDate,
+  };
 
-  if (!academicYear) {
-    throw new AppError('No active academic year found', 404);
-  }
-
-  return academicYear;
+  return AcademicYear.create(academicYearPayload);
 };
 
 export const updateAcademicYearService = async (id, payload) => {
-  const existing = await AcademicYear.findById(id);
+  const allowedFields = ['name', 'startYear', 'endYear', 'startDate', 'endDate'];
+  const filteredPayload = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => allowedFields.includes(key))
+  );
 
-  if (!existing) {
-    throw new AppError('Academic year not found', 404);
+  if (filteredPayload.startYear !== undefined) {
+    filteredPayload.startYear = Number(filteredPayload.startYear);
   }
 
-  // Cross-field validation for dates
-  const updatedStartDate = payload.startDate
-    ? new Date(payload.startDate)
-    : existing.startDate;
-  const updatedEndDate = payload.endDate ? new Date(payload.endDate) : existing.endDate;
-  if (updatedEndDate <= updatedStartDate) {
-    throw new AppError('endDate must be greater than startDate', 400);
+  if (filteredPayload.endYear !== undefined) {
+    filteredPayload.endYear = Number(filteredPayload.endYear);
   }
 
-  // Cross-field validation for years
-  const updatedStartYear = payload.startYear ?? existing.startYear;
-  const updatedEndYear = payload.endYear ?? existing.endYear;
-  if (updatedEndYear <= updatedStartYear) {
-    throw new AppError('endYear must be greater than startYear', 400);
-  }
-
-  // If activating this year, deactivate all others first
-  if (payload.isActive === true) {
-    await AcademicYear.updateMany(
-      { _id: { $ne: id }, isActive: true },
-      { $set: { isActive: false } }
-    );
-  }
-
-  const academicYear = await AcademicYear.findByIdAndUpdate(id, payload, {
+  const academicYear = await AcademicYear.findByIdAndUpdate(id, filteredPayload, {
     returnDocument: 'after',
     runValidators: true,
   });
-
-  return academicYear;
-};
-
-export const deleteAcademicYearService = async (id) => {
-  const academicYear = await AcademicYear.findByIdAndDelete(id);
 
   if (!academicYear) {
     throw new AppError('Academic year not found', 404);

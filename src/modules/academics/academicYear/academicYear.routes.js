@@ -1,12 +1,10 @@
 import express from 'express';
 
 import {
-  createAcademicYear,
   getAcademicYears,
   getAcademicYearById,
-  getActiveAcademicYear,
+  createAcademicYear,
   updateAcademicYear,
-  deleteAcademicYear,
 } from './academicYear.controller.js';
 
 import { protect, restrictTo } from '../../../middlewares/auth.middleware.js';
@@ -16,23 +14,14 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/active', getActiveAcademicYear);
-
 router
   .route('/')
   .get(getAcademicYears)
-  .post(
-    restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER, ROLES.PLACEMENT_STAFF),
-    createAcademicYear
-  );
+  .post(restrictTo(ROLES.SYSTEM_ADMIN), createAcademicYear);
 
 router
   .route('/:id')
   .get(getAcademicYearById)
-  .patch(
-    restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER, ROLES.PLACEMENT_STAFF),
-    updateAcademicYear
-  )
-  .delete(restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER), deleteAcademicYear);
+  .patch(restrictTo(ROLES.SYSTEM_ADMIN), updateAcademicYear);
 
 export default router;

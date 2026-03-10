@@ -1,22 +1,11 @@
 import catchAsync from '../../../utils/catchAsync.js';
 
 import {
-  createAcademicYearService,
   getAcademicYearsService,
   getAcademicYearByIdService,
-  getActiveAcademicYearService,
+  createAcademicYearService,
   updateAcademicYearService,
-  deleteAcademicYearService,
 } from './academicYear.service.js';
-
-export const createAcademicYear = catchAsync(async (req, res) => {
-  const academicYear = await createAcademicYearService(req.body);
-
-  res.status(201).json({
-    status: 'success',
-    data: academicYear,
-  });
-});
 
 export const getAcademicYears = catchAsync(async (req, res) => {
   const result = await getAcademicYearsService(req.query);
@@ -38,10 +27,10 @@ export const getAcademicYearById = catchAsync(async (req, res) => {
   });
 });
 
-export const getActiveAcademicYear = catchAsync(async (req, res) => {
-  const academicYear = await getActiveAcademicYearService();
+export const createAcademicYear = catchAsync(async (req, res) => {
+  const academicYear = await createAcademicYearService(req.body);
 
-  res.status(200).json({
+  res.status(201).json({
     status: 'success',
     data: academicYear,
   });
@@ -53,14 +42,5 @@ export const updateAcademicYear = catchAsync(async (req, res) => {
   res.status(200).json({
     status: 'success',
     data: academicYear,
-  });
-});
-
-export const deleteAcademicYear = catchAsync(async (req, res) => {
-  await deleteAcademicYearService(req.params.id);
-
-  res.status(204).json({
-    status: 'success',
-    data: null,
   });
 });

@@ -8,7 +8,6 @@ import {
   getStudentProfile,
   updateStudent,
   deactivateStudent,
-  activateStudent,
   bulkImportStudents,
 } from './student.controller.js';
 
@@ -41,12 +40,6 @@ router.patch(
   '/:id/deactivate',
   restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER),
   deactivateStudent
-);
-
-router.patch(
-  '/:id/activate',
-  restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER),
-  activateStudent
 );
 
 router

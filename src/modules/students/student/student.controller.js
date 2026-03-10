@@ -9,7 +9,6 @@ import {
   getStudentProfileService,
   updateStudentService,
   deactivateStudentService,
-  activateStudentService,
   bulkImportStudentsService,
 } from './student.service.js';
 
@@ -73,14 +72,6 @@ export const updateStudent = catchAsync(async (req, res) => {
 
 export const deactivateStudent = catchAsync(async (req, res) => {
   const result = await deactivateStudentService(req.params.id);
-
-  res.status(200).json({
-    status: 'success',
-    data: result,
-  });
-});
-export const activateStudent = catchAsync(async (req, res) => {
-  const result = await activateStudentService(req.params.id);
 
   res.status(200).json({
     status: 'success',
@@ -155,8 +146,12 @@ export const bulkImportStudents = catchAsync(async (req, res) => {
     DateOfBirth: row.dateOfBirth ?? row.DateOfBirth,
     PhoneNumber: row.phoneNumber ?? row.PhoneNumber,
     PersonalEmail: row.personalEmail ?? row.PersonalEmail,
-    AlternatePhoneNumber: row.alternatePhoneNumber ?? row.AlternatePhoneNumber,
     Address: row.address ?? row.Address,
+    AlternatePhoneNumber:
+      row.alternatePhoneNumber ??
+      row.AlternatePhoneNumber ??
+      row.AlternatePhone ??
+      row.AlternatePhoneNo,
     TenthPercentage: row.tenthPercentage ?? row.TenthPercentage ?? row['10thPercentage'],
     TwelfthPercentage:
       row.twelfthPercentage ?? row.TwelfthPercentage ?? row['12thPercentage'],

@@ -1,6 +1,7 @@
 import GlobalAcademicSettings from '../globalAcademicSettings.model.js';
 import AcademicYear from '../academicYear.model.js';
 import AppError from '../../../utils/appError.js';
+import mongoose from 'mongoose';
 
 export const getGlobalAcademicSettingsService = async () => {
   const settings = await GlobalAcademicSettings.findOne().populate(
@@ -18,21 +19,55 @@ export const getGlobalAcademicSettingsService = async () => {
 };
 
 export const initGlobalAcademicSettingsService = async (payload) => {
-  const existing = await GlobalAcademicSettings.findOne();
+  const session = await mongoose.startSession();
 
-  if (existing) {
-    throw new AppError(
-      'Global academic settings already exist. Use update instead.',
-      400
+  try {
+    let createdSettings = null;
+    const startDate = payload.startDate || new Date(`${payload.startYear}-06-01`);
+    const endDate = payload.endDate || new Date(`${payload.endYear}-05-31`);
+
+    await session.withTransaction(async () => {
+      const existing = await GlobalAcademicSettings.findOne().session(session);
+
+      if (existing) {
+        throw new AppError(
+          'Global academic settings already exist. Initialization is allowed only once.',
+          400
+        );
+      }
+
+      const [academicYear] = await AcademicYear.create(
+        [
+          {
+            name: payload.name,
+            startYear: payload.startYear,
+            endYear: payload.endYear,
+            startDate,
+            endDate,
+          },
+        ],
+        { session }
+      );
+
+      const [settings] = await GlobalAcademicSettings.create(
+        [
+          {
+            currentAcademicYearId: academicYear._id,
+            semesterType: payload.semesterType,
+          },
+        ],
+        { session }
+      );
+
+      createdSettings = settings;
+    });
+
+    return GlobalAcademicSettings.findById(createdSettings._id).populate(
+      'currentAcademicYearId'
     );
+  } finally {
+    await session.endSession();
   }
-
-  const academicYear = await AcademicYear.findById(payload.currentAcademicYearId);
-  if (!academicYear) {
-    throw new AppError('Academic year not found', 404);
-  }
-
-  return GlobalAcademicSettings.create(payload);
 };
 
 export const updateSemesterTypeService = async (payload) => {
@@ -68,26 +103,26 @@ export const shiftSemesterService = async () => {
   }
 
   if (settings.semesterType === 'ODD') {
-    // ODD → EVEN: only flip semester type, same academic year
     settings.semesterType = 'EVEN';
     await settings.save();
   } else {
-    // EVEN → ODD: create new academic year, update settings
     const currentYear = settings.currentAcademicYearId;
     const newStartYear = currentYear.endYear;
     const newEndYear = newStartYear + 1;
     const newName = `${newStartYear}-${newEndYear}`;
 
-    // Deactivate old academic year
-    await AcademicYear.updateMany({ isActive: true }, { $set: { isActive: false } });
+    // Preserve the current academic-year window pattern while advancing one year
+    const durationMs = currentYear.endDate.getTime() - currentYear.startDate.getTime();
+    const newStartDate = new Date(currentYear.endDate);
+    newStartDate.setDate(newStartDate.getDate() + 1);
+    const newEndDate = new Date(newStartDate.getTime() + durationMs);
 
     const newAcademicYear = await AcademicYear.create({
       name: newName,
       startYear: newStartYear,
       endYear: newEndYear,
-      startDate: new Date(`${newStartYear}-06-01`),
-      endDate: new Date(`${newEndYear}-05-31`),
-      isActive: true,
+      startDate: newStartDate,
+      endDate: newEndDate,
     });
 
     settings.currentAcademicYearId = newAcademicYear._id;

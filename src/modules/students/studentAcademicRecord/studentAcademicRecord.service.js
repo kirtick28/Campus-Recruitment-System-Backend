@@ -2,6 +2,73 @@ import StudentAcademicRecord from '../studentAcademicRecord.model.js';
 import Student from '../student.model.js';
 import AppError from '../../../utils/appError.js';
 
+const getExpectedSemestersForAcademicYear = ({
+  batchStartYear,
+  academicYearStartYear,
+}) => {
+  const yearDifference = academicYearStartYear - batchStartYear;
+
+  if (yearDifference < 0) {
+    throw new AppError(
+      'Selected academic year is earlier than the student admission batch',
+      400
+    );
+  }
+
+  const firstSemester = yearDifference * 2 + 1;
+  const secondSemester = firstSemester + 1;
+
+  if (secondSemester > 8) {
+    throw new AppError(
+      'Selected academic year is outside the student academic duration',
+      400
+    );
+  }
+
+  return {
+    yearDifference,
+    validSemesterNumbers: [firstSemester, secondSemester],
+  };
+};
+
+const validateAcademicYearSemesterMatch = ({ student, academicYear, semesterNumber }) => {
+  const normalizedSemesterNumber = Number(semesterNumber);
+
+  if (!Number.isInteger(normalizedSemesterNumber)) {
+    throw new AppError('semesterNumber must be an integer', 400);
+  }
+
+  if (!student.admissionBatchId?.startYear) {
+    throw new AppError('Student admission batch not found', 404);
+  }
+
+  const { validSemesterNumbers } = getExpectedSemestersForAcademicYear({
+    batchStartYear: student.admissionBatchId.startYear,
+    academicYearStartYear: academicYear.startYear,
+  });
+
+  if (!validSemesterNumbers.includes(normalizedSemesterNumber)) {
+    throw new AppError(
+      `Semester ${normalizedSemesterNumber} does not match the selected academic year for this student. Expected semester ${validSemesterNumbers[0]} or ${validSemesterNumbers[1]}.`,
+      400
+    );
+  }
+
+  return normalizedSemesterNumber;
+};
+
+const normalizeAcademicRecordPayload = (payload = {}) => {
+  const normalized = { ...payload };
+
+  if (normalized.isActive === undefined && normalized.isPromoted !== undefined) {
+    normalized.isActive = normalized.isPromoted;
+  }
+
+  delete normalized.isPromoted;
+
+  return normalized;
+};
+
 const buildRecordFilter = (query = {}) => {
   const filter = {};
 
@@ -30,18 +97,36 @@ const parseListOptions = (query = {}) => {
 };
 
 export const createStudentAcademicRecordService = async (payload) => {
-  const student = await Student.findById(payload.studentId);
+  const normalizedPayload = normalizeAcademicRecordPayload(payload);
+
+  const student = await Student.findById(normalizedPayload.studentId).populate(
+    'admissionBatchId',
+    'name startYear endYear'
+  );
   if (!student) {
     throw new AppError('Student not found', 404);
   }
 
   const AcademicYear = (await import('../../academics/academicYear.model.js')).default;
-  const academicYear = await AcademicYear.findById(payload.academicYearId);
+  const academicYear = await AcademicYear.findById(normalizedPayload.academicYearId);
   if (!academicYear) {
     throw new AppError('Academic year not found', 404);
   }
 
-  return StudentAcademicRecord.create(payload);
+  normalizedPayload.semesterNumber = validateAcademicYearSemesterMatch({
+    student,
+    academicYear,
+    semesterNumber: normalizedPayload.semesterNumber,
+  });
+
+  if (normalizedPayload.isActive === true || normalizedPayload.isActive === undefined) {
+    await StudentAcademicRecord.updateMany(
+      { studentId: normalizedPayload.studentId },
+      { $set: { isActive: false } }
+    );
+  }
+
+  return StudentAcademicRecord.create(normalizedPayload);
 };
 
 export const getStudentAcademicRecordsService = async (query) => {
@@ -50,7 +135,7 @@ export const getStudentAcademicRecordsService = async (query) => {
 
   const [items, total] = await Promise.all([
     StudentAcademicRecord.find(filter)
-      .populate('studentId', 'registerNumber rollNumber')
+      .populate('studentId', 'registerNumber')
       .populate('academicYearId', 'name startYear endYear')
       .sort(sort)
       .skip(skip)
@@ -70,14 +155,29 @@ export const getStudentAcademicRecordsService = async (query) => {
 };
 
 export const updateStudentAcademicRecordService = async (id, payload) => {
-  const record = await StudentAcademicRecord.findByIdAndUpdate(id, payload, {
+  const normalizedPayload = normalizeAcademicRecordPayload(payload);
+
+  const allowedFields = ['cgpa', 'backlogs', 'isActive'];
+  const filteredPayload = Object.fromEntries(
+    Object.entries(normalizedPayload).filter(([key]) => allowedFields.includes(key))
+  );
+
+  const existingRecord = await StudentAcademicRecord.findById(id).select('studentId');
+  if (!existingRecord) {
+    throw new AppError('Student academic record not found', 404);
+  }
+
+  if (filteredPayload.isActive === true) {
+    await StudentAcademicRecord.updateMany(
+      { studentId: existingRecord.studentId, _id: { $ne: id } },
+      { $set: { isActive: false } }
+    );
+  }
+
+  const record = await StudentAcademicRecord.findByIdAndUpdate(id, filteredPayload, {
     returnDocument: 'after',
     runValidators: true,
   });
-
-  if (!record) {
-    throw new AppError('Student academic record not found', 404);
-  }
 
   return record;
 };

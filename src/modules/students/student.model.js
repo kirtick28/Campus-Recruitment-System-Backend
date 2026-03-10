@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const GENDERS = ['MALE', 'FEMALE', 'OTHER'];
 const PLACEMENT_STATUSES = ['NOT_PLACED', 'INTERN', 'PLACED', 'NOT_ELIGIBLE'];
+const STUDENT_STATUSES = ['CURRENT', 'GRADUATED'];
 
 const percentageValidator = {
   validator(value) {
@@ -71,7 +72,7 @@ const studentSchema = new mongoose.Schema(
     },
     dateOfBirth: {
       type: Date,
-      required: true,
+      required: false,
     },
     phoneNumber: {
       type: String,
@@ -98,6 +99,11 @@ const studentSchema = new mongoose.Schema(
       type: String,
       enum: PLACEMENT_STATUSES,
       default: 'NOT_PLACED',
+    },
+    status: {
+      type: String,
+      enum: STUDENT_STATUSES,
+      default: 'CURRENT',
     },
   },
   {

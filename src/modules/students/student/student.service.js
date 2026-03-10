@@ -6,6 +6,7 @@ import Department from '../../academics/department.model.js';
 import AdmissionBatch from '../../academics/admissionBatch.model.js';
 import Section from '../../academics/section.model.js';
 import GlobalAcademicSettings from '../../academics/globalAcademicSettings.model.js';
+import StudentAcademicRecord from '../studentAcademicRecord.model.js';
 import AppError from '../../../utils/appError.js';
 
 const parseListOptions = (query = {}) => {
@@ -52,6 +53,34 @@ const resolveBatchIdsForSemester = async (semester, academicYearId) => {
   const batches = await AdmissionBatch.find({ startYear: batchStartYear });
 
   return batches.map((b) => b._id);
+};
+
+const calculateSemester = ({ currentAcademicYear, batchStartYear, semesterType }) => {
+  const yearDifference = currentAcademicYear.startYear - batchStartYear;
+
+  if (yearDifference < 0) {
+    throw new AppError('Batch year is ahead of current academic year', 400);
+  }
+
+  const semesterNumber =
+    semesterType === 'ODD' ? yearDifference * 2 + 1 : yearDifference * 2 + 2;
+
+  return { yearDifference, semesterNumber };
+};
+
+const getCurrentAcademicContext = async (session) => {
+  const settings = await GlobalAcademicSettings.findOne()
+    .populate('currentAcademicYearId')
+    .session(session);
+
+  if (!settings || !settings.currentAcademicYearId) {
+    throw new AppError('Global academic settings not initialized', 400);
+  }
+
+  return {
+    settings,
+    currentAcademicYear: settings.currentAcademicYearId,
+  };
 };
 
 const buildStudentFilter = async (query = {}) => {
@@ -107,18 +136,42 @@ const buildStudentFilter = async (query = {}) => {
   return filter;
 };
 
-export const createStudentService = async (payload, options = {}) => {
-  const { session } = options;
+const createStudentWithAcademicRecordInSession = async (payload, session) => {
+  const createAcademicRecord = payload.createAcademicRecord !== false;
 
-  const [department, batch, section] = await Promise.all([
+  const [department, batch, section, context] = await Promise.all([
     Department.findById(payload.departmentId).session(session),
     AdmissionBatch.findById(payload.admissionBatchId).session(session),
     Section.findById(payload.sectionId).session(session),
+    getCurrentAcademicContext(session),
   ]);
 
   if (!department) throw new AppError('Department not found', 404);
   if (!batch) throw new AppError('Admission batch not found', 404);
   if (!section) throw new AppError('Section not found', 404);
+
+  if (
+    section.departmentId.toString() !== department._id.toString() ||
+    section.admissionBatchId.toString() !== batch._id.toString()
+  ) {
+    throw new AppError('Section does not belong to the given department and batch', 400);
+  }
+
+  let shouldCreateAcademicRecord = createAcademicRecord;
+  let studentStatus = 'CURRENT';
+
+  const result = calculateSemester({
+    currentAcademicYear: context.currentAcademicYear,
+    batchStartYear: batch.startYear,
+    semesterType: context.settings.semesterType,
+  });
+
+  const semesterNumber = result.semesterNumber;
+
+  if (result.yearDifference > 3) {
+    studentStatus = 'GRADUATED';
+    shouldCreateAcademicRecord = false;
+  }
 
   const [user] = await User.create(
     [
@@ -146,16 +199,55 @@ export const createStudentService = async (payload, options = {}) => {
         gender: payload.gender,
         dateOfBirth: payload.dateOfBirth,
         phoneNumber: payload.phoneNumber,
-        placementStatus: payload.placementStatus,
         alternatePhoneNumber: payload.alternatePhoneNumber,
         tenthPercentage: payload.tenthPercentage,
         twelfthPercentage: payload.twelfthPercentage,
+        placementStatus: payload.placementStatus,
+        status: studentStatus,
       },
     ],
     { session }
   );
 
+  if (shouldCreateAcademicRecord) {
+    await StudentAcademicRecord.create(
+      [
+        {
+          studentId: student._id,
+          academicYearId: context.currentAcademicYear._id,
+          semesterNumber,
+          cgpa: 0,
+          backlogs: 0,
+          isActive: true,
+        },
+      ],
+      { session }
+    );
+  }
+
   return student;
+};
+
+export const createStudentService = async (payload, options = {}) => {
+  const { session } = options;
+
+  if (session) {
+    return createStudentWithAcademicRecordInSession(payload, session);
+  }
+
+  const localSession = await mongoose.startSession();
+  try {
+    let createdStudent;
+    await localSession.withTransaction(async () => {
+      createdStudent = await createStudentWithAcademicRecordInSession(
+        payload,
+        localSession
+      );
+    });
+    return createdStudent;
+  } finally {
+    await localSession.endSession();
+  }
 };
 
 export const getStudentsService = async (query) => {
@@ -236,7 +328,27 @@ export const getStudentProfileService = async (id) => {
 };
 
 export const updateStudentService = async (id, payload) => {
-  const student = await Student.findByIdAndUpdate(id, payload, {
+  const allowedFields = [
+    'registerNumber',
+    'rollNumber',
+    'personalEmail',
+    'address',
+    'departmentId',
+    'admissionBatchId',
+    'sectionId',
+    'gender',
+    'dateOfBirth',
+    'phoneNumber',
+    'alternatePhoneNumber',
+    'tenthPercentage',
+    'twelfthPercentage',
+    'placementStatus',
+  ];
+  const filteredPayload = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => allowedFields.includes(key))
+  );
+
+  const student = await Student.findByIdAndUpdate(id, filteredPayload, {
     returnDocument: 'after',
     runValidators: true,
   });
@@ -260,18 +372,6 @@ export const deactivateStudentService = async (id) => {
   return { message: 'Student deactivated successfully' };
 };
 
-export const activateStudentService = async (id) => {
-  const student = await Student.findById(id);
-
-  if (!student) {
-    throw new AppError('Student not found', 404);
-  }
-
-  await User.findByIdAndUpdate(student.userId, { isActive: true });
-
-  return { message: 'Student deactivated successfully' };
-};
-
 export const bulkImportStudentsService = async (students) => {
   if (!Array.isArray(students) || students.length === 0) {
     return { created: 0 };
@@ -281,14 +381,18 @@ export const bulkImportStudentsService = async (students) => {
 
   try {
     await session.withTransaction(async () => {
-      const [departments, batches, sections] = await Promise.all([
+      const [departments, batches, sections, context] = await Promise.all([
         Department.find().session(session),
         AdmissionBatch.find().session(session),
         Section.find().session(session),
+        getCurrentAcademicContext(session),
       ]);
 
       const deptMap = new Map(departments.map((d) => [d.code, d._id]));
       const batchMap = new Map(batches.map((b) => [b.name, b._id]));
+      const batchStartYearById = new Map(
+        batches.map((batch) => [batch._id.toString(), batch.startYear])
+      );
 
       const sectionMap = new Map(
         sections.map((s) => [
@@ -351,6 +455,7 @@ export const bulkImportStudentsService = async (students) => {
             400
           );
         }
+
         if (seenRollNumbers.has(rollNumber)) {
           throw new AppError(
             `Row ${index + 1}: Duplicate rollNumber '${rollNumber}' in file`,
@@ -361,6 +466,14 @@ export const bulkImportStudentsService = async (students) => {
         seenEmails.add(email);
         seenRegisterNumbers.add(registerNumber);
         seenRollNumbers.add(rollNumber);
+
+        const semesterNumber = calculateSemester({
+          currentAcademicYear: context.currentAcademicYear,
+          batchStartYear: batchStartYearById.get(admissionBatchId.toString()),
+          semesterType: context.settings.semesterType,
+        });
+
+        const yearDifference = semesterNumber.yearDifference;
 
         return {
           name: row.Name,
@@ -382,6 +495,10 @@ export const bulkImportStudentsService = async (students) => {
           tenthPercentage: row.TenthPercentage || row['10thPercentage'],
           twelfthPercentage: row.TwelfthPercentage || row['12thPercentage'],
           placementStatus: row.PlacementStatus,
+          status: yearDifference > 3 ? 'GRADUATED' : 'CURRENT',
+          semesterNumber: semesterNumber.semesterNumber,
+          yearDifference,
+          academicYearId: context.currentAcademicYear._id,
         };
       });
 
@@ -433,7 +550,7 @@ export const bulkImportStudentsService = async (students) => {
 
       const userByEmail = new Map(insertedUsers.map((u) => [u.email, u._id]));
 
-      await Student.insertMany(
+      const insertedStudents = await Student.insertMany(
         normalizedRows.map((row) => ({
           userId: userByEmail.get(row.email),
           registerNumber: row.registerNumber,
@@ -450,7 +567,26 @@ export const bulkImportStudentsService = async (students) => {
           tenthPercentage: row.tenthPercentage,
           twelfthPercentage: row.twelfthPercentage,
           ...(row.placementStatus && { placementStatus: row.placementStatus }),
+          status: row.status,
         })),
+        { session, ordered: true }
+      );
+
+      const studentIdByRegisterNumber = new Map(
+        insertedStudents.map((student) => [student.registerNumber, student._id])
+      );
+
+      await StudentAcademicRecord.insertMany(
+        normalizedRows
+          .filter((row) => row.status !== 'GRADUATED')
+          .map((row) => ({
+            studentId: studentIdByRegisterNumber.get(row.registerNumber),
+            academicYearId: row.academicYearId,
+            semesterNumber: row.semesterNumber,
+            cgpa: 0,
+            backlogs: 0,
+            isActive: true,
+          })),
         { session, ordered: true }
       );
     });

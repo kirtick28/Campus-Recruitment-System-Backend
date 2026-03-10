@@ -14,13 +14,13 @@ const router = express.Router();
 
 router.use(protect);
 
-router
-  .route('/')
-  .get(getGlobalAcademicSettings)
-  .post(
-    restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER),
-    initGlobalAcademicSettings
-  );
+router.route('/').get(getGlobalAcademicSettings);
+
+router.post(
+  '/initialize',
+  restrictTo(ROLES.SYSTEM_ADMIN, ROLES.PLACEMENT_OFFICER),
+  initGlobalAcademicSettings
+);
 
 router.patch(
   '/semester',

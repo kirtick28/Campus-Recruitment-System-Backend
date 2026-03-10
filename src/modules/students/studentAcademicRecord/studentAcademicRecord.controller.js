@@ -7,7 +7,14 @@ import {
 } from './studentAcademicRecord.service.js';
 
 export const createStudentAcademicRecord = catchAsync(async (req, res) => {
-  const record = await createStudentAcademicRecordService(req.body);
+  const payload = {
+    ...req.body,
+    ...(req.body.isActive === undefined && req.body.isPromoted !== undefined
+      ? { isActive: req.body.isPromoted }
+      : {}),
+  };
+
+  const record = await createStudentAcademicRecordService(payload);
 
   res.status(201).json({
     status: 'success',
@@ -27,7 +34,14 @@ export const getStudentAcademicRecords = catchAsync(async (req, res) => {
 });
 
 export const updateStudentAcademicRecord = catchAsync(async (req, res) => {
-  const record = await updateStudentAcademicRecordService(req.params.id, req.body);
+  const payload = {
+    ...req.body,
+    ...(req.body.isActive === undefined && req.body.isPromoted !== undefined
+      ? { isActive: req.body.isPromoted }
+      : {}),
+  };
+
+  const record = await updateStudentAcademicRecordService(req.params.id, payload);
 
   res.status(200).json({
     status: 'success',

@@ -31,10 +31,10 @@ const studentAcademicRecordSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
-    isPromoted: {
+    isActive: {
       type: Boolean,
       required: true,
-      default: false,
+      default: true,
     },
   },
   {

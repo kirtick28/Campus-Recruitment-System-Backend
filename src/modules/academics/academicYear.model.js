@@ -40,17 +40,13 @@ const academicYearSchema = new mongoose.Schema(
         message: 'endDate must be greater than startDate',
       },
     },
-    isActive: {
-      type: Boolean,
-      default: false,
-    },
   },
   {
     timestamps: true,
   }
 );
 
-academicYearSchema.index({ isActive: 1 });
+academicYearSchema.index({ startYear: 1 });
 
 const AcademicYear = mongoose.model('AcademicYear', academicYearSchema);
 
