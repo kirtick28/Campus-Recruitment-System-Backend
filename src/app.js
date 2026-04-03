@@ -3,7 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 
-import rateLimit from 'express-rate-limit';
+// import rateLimit from 'express-rate-limit';
 
 import router from './routes/index.js';
 import { globalErrorHandler } from './middlewares/error.middleware.js';
@@ -34,6 +34,13 @@ if (process.env.NODE_ENV === 'development') {
 // app.use('/api', limiter);
 
 app.use('/api/v1', router);
+
+app.use('/me', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Backend is running',
+  });
+});
 
 app.all('/{*any}', (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server`, 404));

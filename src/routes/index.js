@@ -17,11 +17,4 @@ router.use('/academics', academicsRoutes);
 router.use('/students', studentsRoutes);
 router.use('/student-academic-records', studentAcademicRecordRoutes);
 
-router.get('/me', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'Backend is running',
-  });
-});
-
 export default router;
